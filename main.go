@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"net/http"
 	"os"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -15,6 +16,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
+// config is the application wide configuration struct.
 type config struct {
 	Database struct {
 		User     string `json:"user"`
@@ -26,6 +28,7 @@ type config struct {
 func main() {
 	configFile := flag.String("config", "", "Config file path")
 	runMigrations := flag.Bool("migrate", false, "Run migrations")
+	runServer := flag.Bool("serve", false, "Run HTTP server")
 	flag.Parse()
 
 	path := "./config.json"
@@ -46,8 +49,14 @@ func main() {
 		}
 		log.Println("Migrations completed")
 	}
+
+	if *runServer {
+		server := newServer(db)
+		log.Fatal(http.ListenAndServe(":3000", server))
+	}
 }
 
+// openDB opens a database connection to mysql or mariadb.
 func openDB(user, password, database string) *sql.DB {
 	db, err := sql.Open("mysql", user+":"+password+"@/"+database+"?parseTime=true")
 	if err != nil {
@@ -61,6 +70,7 @@ func unmarshalConfigFile(file string) (*config, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
@@ -75,6 +85,7 @@ func unmarshalConfigFile(file string) (*config, error) {
 	return config, nil
 }
 
+// runDBMigrations runs all the migrations in migrations folder.
 func runDBMigrations(db *sql.DB) error {
 	driver, err := mysql.WithInstance(db, &mysql.Config{})
 	if err != nil {
