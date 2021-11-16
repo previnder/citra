@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/h2non/bimg"
 	"github.com/previnder/citra/pkg/luid"
 )
 
@@ -23,107 +22,17 @@ const (
 	MaxImagesPerFolder = 5000
 )
 
-// Errors.
-var (
-	ErrUnsupportedImage = errors.New("unsupported image format")
-)
-
-// RGB represents color values of range (0, 255).
-type RGB struct {
-	R int `json:"r"`
-	G int `json:"g"`
-	B int `json:"b"`
-}
-
-// ImageType represents a time of image.
-type ImageType string
-
-// List of image types.
-const (
-	ImageTypeJPEG = ImageType("jpeg")
-	ImageTypeWEBP = ImageType("webp")
-)
-
-// ImageSize represents the size of an image.
-type ImageSize struct {
-	Width, Height int
-}
-
-// String implements Stringer interface.
-func (s ImageSize) String() string {
-	if s.Width == s.Height {
-		return strconv.Itoa(s.Width)
-	}
-	return strconv.Itoa(s.Width) + "x" + strconv.Itoa(s.Height)
-}
-
-// MarshalText implements TextMarshaler interface.
-func (s ImageSize) MarshalText() ([]byte, error) {
-	return []byte(s.String()), nil
-}
-
-// UnmarshalText implements TextUnmarshaler interface.
-func (s *ImageSize) UnmarshalText(text []byte) error {
-	str := string(text)
-	i := strings.Index(str, "x")
-	if i == -1 {
-		width, err := strconv.Atoi(str)
-		if err != nil {
-			return err
-		}
-		s.Width = width
-		s.Height = width
-		return nil
-	}
-
-	if len(str) < i+2 {
-		return errors.New("invalid image size")
-	}
-
-	width, err := strconv.Atoi(str[:i])
-	if err != nil {
-		return err
-	}
-	height, err := strconv.Atoi(str[i+1:])
-	if err != nil {
-		return err
-	}
-
-	s.Width, s.Height = width, height
-	return nil
-}
-
-// ImageFit describes how an image is to be fitten into a rectangle.
-type ImageFit string
-
-// Valid ImageFit values.
-const (
-	ImageFitCover   = ImageFit("cover")
-	ImageFitContain = ImageFit("contain")
-)
-
-// UnmarshalText implements TextUnmarshaler interface.
-func (i *ImageFit) UnmarshalText(text []byte) error {
-	str := string(text)
-	switch str {
-	case string(ImageFitCover), string(ImageFitContain):
-		*i = ImageFit(str)
-		return nil
-	}
-	return errors.New("invalid imagefit")
-}
-
 // ImageCopy is a copy of an image.
 type ImageCopy struct {
-	Width     int    `json:"w"`
-	Height    int    `json:"h"`
-	MaxWidth  int    `json:"mw"`
-	MaxHeight int    `json:"mh"`
-	ImageFit  string `json:"if"`
+	Width     int      `json:"w"`
+	Height    int      `json:"h"`
+	MaxWidth  int      `json:"mw"`
+	MaxHeight int      `json:"mh"`
+	ImageFit  ImageFit `json:"if"`
 }
 
 func (c ImageCopy) Filename(imageID string) string {
-	return imageID + "_" + strconv.Itoa(c.MaxWidth) + "_" + strconv.Itoa(c.MaxHeight) + "_" + strings.ToLower(c.ImageFit) + ".jpg"
+	return imageID + "_" + strconv.Itoa(c.MaxWidth) + "_" + strconv.Itoa(c.MaxHeight) + "_" + strings.ToLower(string(c.ImageFit)) + ".jpg"
 }
 
 // DBImage is a record in images table.
@@ -165,10 +74,10 @@ type DBImage struct {
 }
 
 type saveImageArg struct {
-	MaxWidth  int    `json:"maxWidth"`
-	MaxHeight int    `json:"maxHeight"`
-	ImageFit  string `json:"imageFit"`
-	IsDefault bool   `json:"default"`
+	MaxWidth  int      `json:"maxWidth"`
+	MaxHeight int      `json:"maxHeight"`
+	ImageFit  ImageFit `json:"imageFit"`
+	IsDefault bool     `json:"default"`
 }
 
 // SaveImage saves image in buf to disk and creates a record in images table.
@@ -192,7 +101,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 		return nil, errors.New("no default image as an argument")
 	}
 
-	jpg, size, err := compressImageJPEG(buf, defaultCopy.MaxWidth, defaultCopy.MaxHeight, defaultCopy.ImageFit == "cover")
+	jpg, size, err := compressImageJPEG(buf, defaultCopy.MaxWidth, defaultCopy.MaxHeight, defaultCopy.ImageFit)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unsupported image format") {
 			return nil, ErrUnsupportedImage
@@ -217,7 +126,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 	// save and save copies.
 	var savedCopies []*ImageCopy
 	var containSizes []ImageSize // saved contain images
-	if defaultCopy.ImageFit == "contain" {
+	if defaultCopy.ImageFit == ImageFitContain {
 		containSizes = append(containSizes, ImageSize{size.Width, size.Height})
 	}
 	if err = ioutil.WriteFile(filepath.Join(folder, ID.String()+".jpg"), jpg, 0755); err != nil {
@@ -228,7 +137,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 		if item.IsDefault {
 			continue
 		}
-		if item.ImageFit == "contain" {
+		if item.ImageFit == ImageFitContain {
 			w, h := fitToResolution(originalWidth, originalHeight, item.MaxWidth, item.MaxHeight)
 			skip := false
 			for _, size := range containSizes {
@@ -247,7 +156,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 			return nil, err
 		}
 		savedCopies = append(savedCopies, c)
-		if item.ImageFit == "contain" {
+		if item.ImageFit == ImageFitContain {
 			containSizes = append(containSizes, ImageSize{c.Width, c.Height})
 		}
 	}
@@ -277,7 +186,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 
 // folder is rootDir/folderID and it already exists.
 func saveImageCopy(buf []byte, arg saveImageArg, folder, imageID string) (*ImageCopy, error) {
-	jpeg, size, err := compressImageJPEG(buf, arg.MaxWidth, arg.MaxHeight, arg.ImageFit == "cover")
+	jpeg, size, err := compressImageJPEG(buf, arg.MaxWidth, arg.MaxHeight, arg.ImageFit)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unsupported image format") {
 			return nil, ErrUnsupportedImage
@@ -334,16 +243,4 @@ func createImagesFolder(tx *sql.Tx, rootDir string) (int, error) {
 	}
 
 	return int(ID), os.MkdirAll(filepath.Join(rootDir, strconv.Itoa(int(ID))), 0755)
-}
-
-// imageSize returns the size of image in buf (of any image type supported by
-// libvips).
-func imageSize(buf []byte) (w int, h int, err error) {
-	image := bimg.NewImage(buf)
-	size, err := image.Size()
-	if err != nil {
-		return
-	}
-	w, h = size.Width, size.Height
-	return
 }

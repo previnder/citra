@@ -44,7 +44,6 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json; charset=UTF-8")
 		s.router.ServeHTTP(w, r)
 	} else {
-		// file server
 		s.serveImages(w, r)
 	}
 }
@@ -101,9 +100,9 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 	args := []saveImageArg{
 		{MaxHeight: 1440, MaxWidth: 720, ImageFit: "contain"},
 		{MaxHeight: 2160, MaxWidth: 1080, ImageFit: "contain"},
-		{MaxHeight: 4320, MaxWidth: 2160, ImageFit: "contain"},
+		{MaxHeight: 4320, MaxWidth: 2160, ImageFit: "contain", IsDefault: true},
 		{MaxHeight: 5000, MaxWidth: 5000, ImageFit: "contain", IsDefault: true},
-		// {MaxHeight: 720, MaxWidth: 1280, ImageFit: "cover"},
+		{MaxHeight: 720, MaxWidth: 1280, ImageFit: "cover"},
 	}
 
 	t1 := time.Now()

@@ -1,11 +1,112 @@
 package main
 
 import (
+	"errors"
 	"image"
 	"math"
+	"strconv"
+	"strings"
 
 	"github.com/h2non/bimg"
 )
+
+// Errors.
+var (
+	ErrUnsupportedImage = errors.New("unsupported image format")
+)
+
+// ImageType represents a type of image.
+type ImageType string
+
+// List of image types.
+const (
+	ImageTypeJPEG = ImageType("jpeg")
+	ImageTypeWEBP = ImageType("webp")
+)
+
+// RGB represents color values of range (0, 255).
+type RGB struct {
+	R int `json:"r"`
+	G int `json:"g"`
+	B int `json:"b"`
+}
+
+// ImageSize represents the size of an image.
+type ImageSize struct {
+	Width, Height int
+}
+
+// String implements Stringer interface.
+//
+// It returns, as an example, "400" if width and height are both 400px, and
+// "400x600" is width is 400px and height is 600px.
+func (s ImageSize) String() string {
+	if s.Width == s.Height {
+		return strconv.Itoa(s.Width)
+	}
+	return strconv.Itoa(s.Width) + "x" + strconv.Itoa(s.Height)
+}
+
+// MarshalText implements TextMarshaler interface.
+func (s ImageSize) MarshalText() ([]byte, error) {
+	return []byte(s.String()), nil
+}
+
+// UnmarshalText implements TextUnmarshaler interface. It does the reverse of
+// what MarshalText and String do.
+func (s *ImageSize) UnmarshalText(text []byte) error {
+	str := string(text)
+	i := strings.Index(str, "x")
+	if i == -1 {
+		width, err := strconv.Atoi(str)
+		if err != nil {
+			return err
+		}
+		s.Width = width
+		s.Height = width
+		return nil
+	}
+
+	if len(str) < i+2 {
+		return errors.New("invalid image size")
+	}
+
+	width, err := strconv.Atoi(str[:i])
+	if err != nil {
+		return err
+	}
+	height, err := strconv.Atoi(str[i+1:])
+	if err != nil {
+		return err
+	}
+
+	s.Width, s.Height = width, height
+	return nil
+}
+
+// ImageFit denotes how an image is to be fitted into a rectangle.
+type ImageFit string
+
+// Valid ImageFit values.
+const (
+	ImageFitCover   = ImageFit("cover")
+	ImageFitContain = ImageFit("contain")
+	ImageFitDefault = ImageFitContain
+)
+
+// UnmarshalText implements TextUnmarshaler interface.
+func (i *ImageFit) UnmarshalText(text []byte) error {
+	str := string(text)
+	switch str {
+	case string(ImageFitCover), string(ImageFitContain):
+		*i = ImageFit(str)
+		return nil
+	case "":
+		*i = ImageFitDefault
+		return nil
+	}
+	return errors.New("invalid ImageFit")
+}
 
 // fitToResolution returns width and height as they fit into an image of size w
 // and h. Aspect ratio is not changed.
@@ -52,12 +153,9 @@ func imageAverageColor(img image.Image) RGB {
 	return c
 }
 
-// compressImageJPEG converts the image in buf to a JPEG and, if cover is
-// false, fits the image into maxWidth and maxHeight without changing aspect
-// ratio, otherwise the images size is set to maxWidth and maxHeight and the
-// image is to cover the whole canvas. It returns the processed images width
-// and height.
-func compressImageJPEG(buf []byte, maxWidth, maxHeight int, cover bool) ([]byte, ImageSize, error) {
+// compressImageJPEG converts the image in buf to a JPEG, if it's not already,
+// and fits the image into maxWidth and maxHeight as per fit.
+func compressImageJPEG(buf []byte, maxWidth, maxHeight int, fit ImageFit) ([]byte, ImageSize, error) {
 	s := ImageSize{}
 	image := bimg.NewImage(buf)
 	if image.Type() != bimg.ImageTypeName(bimg.JPEG) {
@@ -72,10 +170,12 @@ func compressImageJPEG(buf []byte, maxWidth, maxHeight int, cover bool) ([]byte,
 	}
 
 	var w, h int
-	if cover {
+	if fit == ImageFitCover {
 		w, h = maxWidth, maxHeight
-	} else {
+	} else if fit == ImageFitContain {
 		w, h = fitToResolution(size.Width, size.Height, maxWidth, maxHeight)
+	} else {
+		return nil, s, errors.New("invalid ImageFit")
 	}
 
 	s.Width, s.Height = w, h
@@ -83,21 +183,13 @@ func compressImageJPEG(buf []byte, maxWidth, maxHeight int, cover bool) ([]byte,
 	return buf, s, err
 }
 
-// compressImageWEBP converts the image in buf to a WEBP and fits the image
-// into maxWidth and maxHeight without changing aspect ratio.
-func compressImageWEBP(buf []byte, maxWidth, maxHeight int) ([]byte, error) {
+// imageSize returns the size of image in buf.
+func imageSize(buf []byte) (w int, h int, err error) {
 	image := bimg.NewImage(buf)
-	if image.Type() != bimg.ImageTypeName(bimg.WEBP) {
-		if _, err := image.Convert(bimg.WEBP); err != nil {
-			return nil, err
-		}
-	}
-
 	size, err := image.Size()
 	if err != nil {
-		return nil, err
+		return
 	}
-
-	w, h := fitToResolution(size.Width, size.Height, maxWidth, maxHeight)
-	return image.ResizeAndCrop(w, h)
+	w, h = size.Width, size.Height
+	return
 }
