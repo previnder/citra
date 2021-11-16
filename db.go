@@ -72,7 +72,11 @@ type DBImage struct {
 	DeletedAt *time.Time `json:"-"`
 
 	// Is of the format /imgs/{FolderID}/{ID}.jpg.
-	DefaultImageURL string `json:"defaultImageURL,omitempty"`
+	URL string `json:"defaultImageURL,omitempty"`
+}
+
+func (i *DBImage) DefaultImageURL() string {
+	return "/images/" + strconv.Itoa(i.FolderID) + "/" + i.ID.String() + ".jpg"
 }
 
 type saveImageArg struct {
@@ -273,6 +277,8 @@ func GetImage(db *sql.DB, ID luid.ID) (*DBImage, error) {
 	if err = json.Unmarshal(copies, &image.Copies); err != nil {
 		return nil, errors.New("error unmarshaling copies: " + err.Error())
 	}
+
+	image.URL = image.DefaultImageURL()
 
 	return image, nil
 }
