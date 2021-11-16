@@ -29,6 +29,8 @@ type ImageCopy struct {
 	MaxWidth  int      `json:"mw"`
 	MaxHeight int      `json:"mh"`
 	ImageFit  ImageFit `json:"if"`
+	// Size of image in bytes.
+	Size int `json:"s"`
 }
 
 func (c ImageCopy) Filename(imageID string) string {
@@ -200,6 +202,7 @@ func saveImageCopy(buf []byte, arg saveImageArg, folder, imageID string) (*Image
 		Width:     size.Width,
 		Height:    size.Height,
 		ImageFit:  arg.ImageFit,
+		Size:      len(jpeg),
 	}
 
 	if err = ioutil.WriteFile(filepath.Join(folder, c.Filename(imageID)), jpeg, 0755); err != nil {
