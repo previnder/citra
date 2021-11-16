@@ -93,6 +93,26 @@ func (s *ImageSize) UnmarshalText(text []byte) error {
 	return nil
 }
 
+// ImageFit describes how an image is to be fitten into a rectangle.
+type ImageFit string
+
+// Valid ImageFit values.
+const (
+	ImageFitCover   = ImageFit("cover")
+	ImageFitContain = ImageFit("contain")
+)
+
+// UnmarshalText implements TextUnmarshaler interface.
+func (i *ImageFit) UnmarshalText(text []byte) error {
+	str := string(text)
+	switch str {
+	case string(ImageFitCover), string(ImageFitContain):
+		*i = ImageFit(str)
+		return nil
+	}
+	return errors.New("invalid imagefit")
+}
+
 // ImageCopy is a copy of an image.
 type ImageCopy struct {
 	Width     int    `json:"w"`

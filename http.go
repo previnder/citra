@@ -6,10 +6,15 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/previnder/citra/pkg/luid"
 )
 
 type server struct {
@@ -40,6 +45,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.router.ServeHTTP(w, r)
 	} else {
 		// file server
+		s.serveImages(w, r)
 	}
 }
 
@@ -114,5 +120,80 @@ func (s *server) getImage(w http.ResponseWriter, r *http.Request) {
 func (s *server) deleteImage(w http.ResponseWriter, r *http.Request) {
 }
 
+// URL is of the form /images/{folderID/{imageID}.jpg[?size=1440x720&fit=cover]
 func (s *server) serveImages(w http.ResponseWriter, r *http.Request) {
+	path := strings.Split(r.URL.Path, "/")
+	if path[0] == "" {
+		path = path[1:]
+	}
+	if len(path) != 3 {
+		http.NotFound(w, r)
+		return
+	}
+	if path[0] != "images" {
+		http.NotFound(w, r)
+		return
+	}
+	folderID, err := strconv.Atoi(path[1])
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !strings.HasSuffix(path[2], ".jpg") {
+		http.NotFound(w, r)
+		return
+	}
+	imageID := luid.ID{}
+	if err = imageID.UnmarshalText([]byte(path[2][:strings.LastIndex(path[2], ".jpg")])); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	q := r.URL.Query()
+	name := imageID.String()
+	if q.Get("size") != "" {
+		var size ImageSize
+		if err = size.UnmarshalText([]byte(q.Get("size"))); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		name += "_" + strconv.Itoa(size.Width) + "_" + strconv.Itoa(size.Height)
+		fit := ImageFitContain
+		if q.Get("fit") != "" {
+			if err = fit.UnmarshalText([]byte(q.Get("fit"))); err != nil {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		name += "_" + string(fit)
+	}
+
+	filepath := filepath.Join("./uploads/", strconv.Itoa(folderID), name+".jpg")
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.NotFound(w, r)
+			return
+		}
+		s.imageInternalServerError(w, r)
+		return
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		s.imageInternalServerError(w, r)
+		return
+	}
+
+	w.Header().Add("Cache-Control", "max-age=1209600, no-transform")
+	w.Header().Add("Cross-Origin-Resource-Policy", "cross-origin")
+	http.ServeContent(w, r, "", stat.ModTime(), file)
+}
+
+func (s *server) imageInternalServerError(w http.ResponseWriter, r *http.Request) {
+	debug.PrintStack()
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte("Internal server error"))
 }
