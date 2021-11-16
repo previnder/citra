@@ -122,7 +122,7 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t1 := time.Now()
-	_, err = SaveImage(s.db, buf, args, "./uploads")
+	_, err = SaveImage(s.db, buf, args, s.config.RootUploadsDir)
 	log.Println(time.Since(t1))
 	if err != nil {
 		log.Println(err)
@@ -207,7 +207,7 @@ func (s *server) serveImages(w http.ResponseWriter, r *http.Request) {
 		name += "_" + string(fit)
 	}
 
-	filepath := filepath.Join("./uploads/", strconv.Itoa(folderID), name+".jpg")
+	filepath := filepath.Join(s.config.RootUploadsDir, strconv.Itoa(folderID), name+".jpg")
 
 	file, err := os.Open(filepath)
 	if err != nil {
