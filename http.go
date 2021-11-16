@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -91,17 +92,20 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jpg, err := compressImageJPEG(buf, 1920, 1080)
-	if err != nil {
-		if strings.Contains(err.Error(), "Unsupported image format") {
-			s.writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		s.writeInternalServerError(w, err)
-		return
+	args := []saveImageArg{
+		{MaxHeight: 1440, MaxWidth: 720, ImageFit: "contain"},
+		{MaxHeight: 2160, MaxWidth: 1080, ImageFit: "contain"},
+		{MaxHeight: 4320, MaxWidth: 2160, ImageFit: "contain"},
+		{MaxHeight: 5000, MaxWidth: 5000, ImageFit: "contain", IsDefault: true},
+		// {MaxHeight: 720, MaxWidth: 1280, ImageFit: "cover"},
 	}
 
-	ioutil.WriteFile("./out.jpg", jpg, 0644)
+	t1 := time.Now()
+	_, err = SaveImage(s.db, buf, args, "./uploads")
+	log.Println(time.Since(t1))
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 func (s *server) getImage(w http.ResponseWriter, r *http.Request) {

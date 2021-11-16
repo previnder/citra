@@ -6,8 +6,10 @@ import (
 	"flag"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-migrate/migrate"
@@ -26,6 +28,8 @@ type config struct {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
+
 	configFile := flag.String("config", "", "Config file path")
 	runMigrations := flag.Bool("migrate", false, "Run migrations")
 	runServer := flag.Bool("serve", false, "Run HTTP server")
