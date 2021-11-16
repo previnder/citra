@@ -97,12 +97,28 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	args := []saveImageArg{
-		{MaxHeight: 1440, MaxWidth: 720, ImageFit: "contain"},
-		{MaxHeight: 2160, MaxWidth: 1080, ImageFit: "contain"},
-		{MaxHeight: 4320, MaxWidth: 2160, ImageFit: "contain", IsDefault: true},
-		{MaxHeight: 5000, MaxWidth: 5000, ImageFit: "contain", IsDefault: true},
-		{MaxHeight: 720, MaxWidth: 1280, ImageFit: "cover"},
+	copies := r.Form.Get("copies")
+	if copies == "" {
+		s.writeError(w, http.StatusBadRequest, "no copies to make")
+		return
+	}
+
+	var args []saveImageArg
+	if err = json.Unmarshal([]byte(copies), &args); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	defaultFound := false
+	for _, arg := range args {
+		if arg.IsDefault {
+			defaultFound = true
+			break
+		}
+	}
+	if !defaultFound {
+		s.writeError(w, http.StatusBadRequest, "no default copy provided")
+		return
 	}
 
 	t1 := time.Now()
