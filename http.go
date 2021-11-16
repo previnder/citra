@@ -76,6 +76,19 @@ func (s *server) methodNotAllowedHandler(w http.ResponseWriter, r *http.Request)
 	s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 }
 
+// abort if error is non-nil.
+//
+// If an error is encounted notFoundHandler is invoked.
+func (s *server) unmarshalLUID(w http.ResponseWriter, r *http.Request, ID string) (luid.ID, error) {
+	var LUID luid.ID
+	if err := LUID.UnmarshalText([]byte(ID)); err != nil {
+		s.notFoundHandler(w, r)
+		return LUID, err
+	}
+
+	return LUID, nil
+}
+
 // addImage accepts only POST requests and must have a content type of
 // multipart/form-data.
 func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
@@ -139,11 +152,8 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getImage(w http.ResponseWriter, r *http.Request) {
-	imageIDStr := mux.Vars(r)["imageID"]
-
-	var imageID luid.ID
-	if err := imageID.UnmarshalText([]byte(imageIDStr)); err != nil {
-		s.notFoundHandler(w, r)
+	imageID, err := s.unmarshalLUID(w, r, mux.Vars(r)["imageID"])
+	if err != nil {
 		return
 	}
 
@@ -166,6 +176,27 @@ func (s *server) getImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) deleteImage(w http.ResponseWriter, r *http.Request) {
+	imageID, err := s.unmarshalLUID(w, r, mux.Vars(r)["imageID"])
+	if err != nil {
+		return
+	}
+
+	image, err := DeleteImage(s.db, imageID, s.config.RootUploadsDir)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			s.notFoundHandler(w, r)
+			return
+		}
+		s.writeInternalServerError(w, err)
+		return
+	}
+
+	data, err := json.Marshal(image)
+	if err != nil {
+		s.writeInternalServerError(w, err)
+		return
+	}
+	w.Write(data)
 }
 
 // URL is of the form /images/{folderID/{imageID}.jpg[?size=1440x720&fit=cover]

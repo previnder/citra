@@ -68,8 +68,8 @@ type DBImage struct {
 	Copies []*ImageCopy `json:"copies"`
 
 	CreatedAt time.Time  `json:"createdAt"`
-	IsDeleted bool       `json:"-"`
-	DeletedAt *time.Time `json:"-"`
+	IsDeleted bool       `json:"deleted"`
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 
 	// Is of the format /imgs/{FolderID}/{ID}.jpg.
 	URL string `json:"url,omitempty"`
@@ -295,4 +295,77 @@ func GetImage(db *sql.DB, ID luid.ID) (*DBImage, error) {
 	image.GenerateURLs()
 
 	return image, nil
+}
+
+// DeleteImage sets is_deleted field of images to true and deletes image files
+// on disk.
+func DeleteImage(db *sql.DB, ID luid.ID, rootDir string) (*DBImage, error) {
+	image, err := GetImage(db, ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if image.IsDeleted {
+		return image, nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	st, err := tx.Prepare("update images set is_deleted = ?, deleted_at = ? where id = ?")
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	now := time.Now()
+	if _, err = st.Exec(true, now, ID); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// delete files on disk
+	prefix := image.ID.String()
+	if _, err = deleteFilesByPrefix(filepath.Join(rootDir, strconv.Itoa(image.FolderID)), prefix); err != nil {
+		return nil, err
+	}
+
+	image.DeletedAt = &now
+	image.IsDeleted = true
+
+	return image, nil
+}
+
+// deleteFilesByPrefix deletes all files in dir with filename prefix s. If and
+// error is encounted no of files deleted up to that point is returned.
+func deleteFilesByPrefix(dir, s string) (int, error) {
+	file, err := os.Open(dir)
+	if err != nil {
+		return 0, err
+	}
+
+	names, err := file.Readdirnames(0)
+	if err != nil {
+		return 0, err
+	}
+
+	file.Close()
+
+	n := 0
+	for _, name := range names {
+		if strings.HasPrefix(name, s) {
+			if err = os.Remove(filepath.Join(dir, name)); err != nil {
+				return n, err
+			}
+			n++
+		}
+	}
+
+	return n, nil
 }
