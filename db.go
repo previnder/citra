@@ -172,7 +172,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 	savedCopiesJSON, _ := json.Marshal(savedCopies)
 
 	_, err = tx.Exec(`insert into images (id, folder_id, width, height,
-		maxWidth, maxHeight, type, size, uploaded_size, copies, average_color, created_at)
+		max_width, max_height, type, size, uploaded_size, copies, average_color, created_at)
 		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ID, folderID, size.Width, size.Height, defaultCopy.MaxWidth, defaultCopy.MaxHeight,
 		ImageTypeJPEG, len(jpg), len(buf), savedCopiesJSON, color, now)
@@ -243,4 +243,33 @@ func createImagesFolder(tx *sql.Tx, rootDir string) (int, error) {
 	}
 
 	return int(ID), os.MkdirAll(filepath.Join(rootDir, strconv.Itoa(int(ID))), 0755)
+}
+
+func GetImage(db *sql.DB, ID luid.ID) (*DBImage, error) {
+	st, err := db.Prepare(`select id, folder_id, type, width, height, max_width, max_height,
+		size, uploaded_size, average_color, copies, created_at, is_deleted,
+		deleted_at from images where id = ?`)
+	if err != nil {
+		return nil, err
+	}
+
+	row := st.QueryRow(ID)
+	image := &DBImage{}
+	var copies, color []byte
+
+	err = row.Scan(&image.ID, &image.FolderID, &image.Type, &image.Width, &image.Height,
+		&image.MaxWidth, &image.MaxHeight, &image.Size, &image.UploadedSize, &color,
+		&copies, &image.CreatedAt, &image.IsDeleted, &image.DeletedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = json.Unmarshal(color, &image.AverageColor); err != nil {
+		return nil, errors.New("error unmarshaling color: " + err.Error())
+	}
+	if err = json.Unmarshal(copies, &image.Copies); err != nil {
+		return nil, errors.New("error unmarshaling copies: " + err.Error())
+	}
+
+	return image, nil
 }

@@ -30,8 +30,8 @@ func newServer(db *sql.DB) *server {
 	s.router = mux.NewRouter()
 
 	s.router.Handle("/api/images", http.HandlerFunc(s.addImage)).Methods("POST")
-	s.router.Handle("/api/image/{imageID}", http.HandlerFunc(s.getImage)).Methods("GET")
-	s.router.Handle("/api/image/{imageID}", http.HandlerFunc(s.deleteImage)).Methods("DELETE")
+	s.router.Handle("/api/images/{imageID}", http.HandlerFunc(s.getImage)).Methods("GET")
+	s.router.Handle("/api/images/{imageID}", http.HandlerFunc(s.deleteImage)).Methods("DELETE")
 
 	s.router.NotFoundHandler = http.HandlerFunc(s.notFoundHandler)
 	s.router.MethodNotAllowedHandler = http.HandlerFunc(s.methodNotAllowedHandler)
@@ -130,6 +130,30 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getImage(w http.ResponseWriter, r *http.Request) {
+	imageIDStr := mux.Vars(r)["imageID"]
+
+	var imageID luid.ID
+	if err := imageID.UnmarshalText([]byte(imageIDStr)); err != nil {
+		s.notFoundHandler(w, r)
+		return
+	}
+
+	image, err := GetImage(s.db, imageID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			s.notFoundHandler(w, r)
+			return
+		}
+		s.writeInternalServerError(w, err)
+		return
+	}
+
+	data, err := json.Marshal(image)
+	if err != nil {
+		s.writeInternalServerError(w, err)
+		return
+	}
+	w.Write(data)
 }
 
 func (s *server) deleteImage(w http.ResponseWriter, r *http.Request) {
