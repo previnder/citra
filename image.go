@@ -15,7 +15,7 @@ var (
 	ErrUnsupportedImage = errors.New("unsupported image format")
 )
 
-// ImageType represents a type of image.
+// ImageType represents the type of image.
 type ImageType string
 
 // List of image types.
@@ -36,10 +36,8 @@ type ImageSize struct {
 	Width, Height int
 }
 
-// String implements Stringer interface.
-//
-// It returns, as an example, "400" if width and height are both 400px, and
-// "400x600" is width is 400px and height is 600px.
+// String returns, as an example, "400" if width and height are both 400px, and
+// "400x600" if width is 400px and height is 600px.
 func (s ImageSize) String() string {
 	if s.Width == s.Height {
 		return strconv.Itoa(s.Width)
@@ -47,7 +45,7 @@ func (s ImageSize) String() string {
 	return strconv.Itoa(s.Width) + "x" + strconv.Itoa(s.Height)
 }
 
-// MarshalText implements TextMarshaler interface.
+// MarshalText implements TextMarshaler interface. Output same as String method.
 func (s ImageSize) MarshalText() ([]byte, error) {
 	return []byte(s.String()), nil
 }
@@ -108,9 +106,9 @@ func (i *ImageFit) UnmarshalText(text []byte) error {
 	return errors.New("invalid ImageFit")
 }
 
-// fitToResolution returns width and height as they fit into an image of size w
-// and h. Aspect ratio is not changed.
-func fitToResolution(width, height, w, h int) (int, int) {
+// ContainInResolution returns width and height as they fit into an image of
+// size w and h. Aspect ratio is not changed.
+func ContainInResolution(width, height, w, h int) (int, int) {
 	x, y, scale := float64(width), float64(height), 1.0
 	if width > w {
 		scale = float64(w) / float64(width)
@@ -125,10 +123,9 @@ func fitToResolution(width, height, w, h int) (int, int) {
 	return int(x), int(y)
 }
 
-// imageAverageColor returns the average RGB color values of img by averaging
-// the colors of at most 10000 pixels. Each RGB value is in the range of
-// (0,255).
-func imageAverageColor(img image.Image) RGB {
+// ImageAverageColor returns the average RGB color of img by averaging the
+// colors of at most 10000 pixels. Each RGB value is in the range of (0,255).
+func ImageAverageColor(img image.Image) RGB {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 
@@ -153,18 +150,18 @@ func imageAverageColor(img image.Image) RGB {
 	return c
 }
 
-// compressImageJPEG converts the image in buf to a JPEG, if it's not already,
-// and fits the image into maxWidth and maxHeight as per fit.
-func compressImageJPEG(buf []byte, maxWidth, maxHeight int, fit ImageFit) ([]byte, ImageSize, error) {
+// ToJPEG converts the image to a JPEG, if it's not already, and fits the image
+// into maxWidth and maxHeight according to fit.
+func ToJPEG(image []byte, maxWidth, maxHeight int, fit ImageFit) ([]byte, ImageSize, error) {
 	s := ImageSize{}
-	image := bimg.NewImage(buf)
-	if image.Type() != bimg.ImageTypeName(bimg.JPEG) {
-		if _, err := image.Convert(bimg.JPEG); err != nil {
+	img := bimg.NewImage(image)
+	if img.Type() != bimg.ImageTypeName(bimg.JPEG) {
+		if _, err := img.Convert(bimg.JPEG); err != nil {
 			return nil, s, err
 		}
 	}
 
-	size, err := image.Size()
+	size, err := img.Size()
 	if err != nil {
 		return nil, s, err
 	}
@@ -173,20 +170,20 @@ func compressImageJPEG(buf []byte, maxWidth, maxHeight int, fit ImageFit) ([]byt
 	if fit == ImageFitCover {
 		w, h = maxWidth, maxHeight
 	} else if fit == ImageFitContain {
-		w, h = fitToResolution(size.Width, size.Height, maxWidth, maxHeight)
+		w, h = ContainInResolution(size.Width, size.Height, maxWidth, maxHeight)
 	} else {
 		return nil, s, errors.New("invalid ImageFit")
 	}
 
 	s.Width, s.Height = w, h
-	buf, err = image.ResizeAndCrop(w, h)
-	return buf, s, err
+	image, err = img.ResizeAndCrop(w, h)
+	return image, s, err
 }
 
-// imageSize returns the size of image in buf.
-func imageSize(buf []byte) (w int, h int, err error) {
-	image := bimg.NewImage(buf)
-	size, err := image.Size()
+// GetImageSize returns the size of image.
+func GetImageSize(image []byte) (w int, h int, err error) {
+	img := bimg.NewImage(image)
+	size, err := img.Size()
 	if err != nil {
 		return
 	}

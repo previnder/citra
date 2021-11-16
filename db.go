@@ -33,14 +33,16 @@ type ImageCopy struct {
 	Size int `json:"s"`
 }
 
+// Filename returns filename os the image stored on disk.
 func (c ImageCopy) Filename(imageID string) string {
 	return imageID + "_" + strconv.Itoa(c.MaxWidth) + "_" + strconv.Itoa(c.MaxHeight) + "_" + strings.ToLower(string(c.ImageFit)) + ".jpg"
 }
 
 // DBImage is a record in images table.
 type DBImage struct {
-	ID       luid.ID `json:"id"`
-	FolderID int     `json:"-"`
+	ID luid.ID `json:"id"`
+
+	FolderID int `json:"-"`
 
 	// JPEG for now.
 	Type ImageType `json:"type"`
@@ -77,6 +79,7 @@ type DBImage struct {
 	URLs []string `json:"urls"`
 }
 
+// GenerateURLs populates i.URL and i.URLs fields.
 func (i *DBImage) GenerateURLs() {
 	folderID := strconv.Itoa(i.FolderID)
 	ID := i.ID.String()
@@ -89,26 +92,33 @@ func (i *DBImage) GenerateURLs() {
 	}
 }
 
-type saveImageArg struct {
+// SaveImageArg is an argument to SaveImage. It describes how a copy of the
+// saving image is to be created.
+type SaveImageArg struct {
 	MaxWidth  int      `json:"maxWidth"`
 	MaxHeight int      `json:"maxHeight"`
 	ImageFit  ImageFit `json:"imageFit"`
-	IsDefault bool     `json:"default"`
+
+	// If true, this is no longer a copy but the default, or the original,
+	// image. There can be only one default copy per image (if multiple
+	// arguments are provided as being default the first one is selected and
+	// others are discarded).
+	IsDefault bool `json:"default"`
 }
 
-// SaveImage saves image in buf to disk and creates a record in images table.
+// SaveImage saves the image in buf to disk and creates a record in images table.
 // It also creates thumbnails of thumb sizes.
 //
 // The images are saved as JPEGs.
-func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*DBImage, error) {
-	var defaultCopy saveImageArg
+func SaveImage(db *sql.DB, buf []byte, copies []SaveImageArg, rootDir string) (*DBImage, error) {
+	var defaultCopy SaveImageArg
 	for _, item := range copies {
 		if item.IsDefault {
 			defaultCopy = item
 		}
 	}
 
-	originalWidth, originalHeight, err := imageSize(buf)
+	originalWidth, originalHeight, err := GetImageSize(buf)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +127,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 		return nil, errors.New("no default image as an argument")
 	}
 
-	jpg, size, err := compressImageJPEG(buf, defaultCopy.MaxWidth, defaultCopy.MaxHeight, defaultCopy.ImageFit)
+	jpg, size, err := ToJPEG(buf, defaultCopy.MaxWidth, defaultCopy.MaxHeight, defaultCopy.ImageFit)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unsupported image format") {
 			return nil, ErrUnsupportedImage
@@ -154,7 +164,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 			continue
 		}
 		if item.ImageFit == ImageFitContain {
-			w, h := fitToResolution(originalWidth, originalHeight, item.MaxWidth, item.MaxHeight)
+			w, h := ContainInResolution(originalWidth, originalHeight, item.MaxWidth, item.MaxHeight)
 			skip := false
 			for _, size := range containSizes {
 				if size.Width == w && size.Height == h {
@@ -183,7 +193,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 		tx.Rollback()
 		return nil, err
 	}
-	color, _ := json.Marshal(imageAverageColor(jpegImage))
+	color, _ := json.Marshal(ImageAverageColor(jpegImage))
 
 	savedCopiesJSON, _ := json.Marshal(savedCopies)
 
@@ -205,8 +215,8 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 }
 
 // folder is rootDir/folderID and it already exists.
-func saveImageCopy(buf []byte, arg saveImageArg, folder, imageID string) (*ImageCopy, error) {
-	jpeg, size, err := compressImageJPEG(buf, arg.MaxWidth, arg.MaxHeight, arg.ImageFit)
+func saveImageCopy(buf []byte, arg SaveImageArg, folder, imageID string) (*ImageCopy, error) {
+	jpeg, size, err := ToJPEG(buf, arg.MaxWidth, arg.MaxHeight, arg.ImageFit)
 	if err != nil {
 		if strings.Contains(err.Error(), "Unsupported image format") {
 			return nil, ErrUnsupportedImage
@@ -266,6 +276,7 @@ func createImagesFolder(tx *sql.Tx, rootDir string) (int, error) {
 	return int(ID), os.MkdirAll(filepath.Join(rootDir, strconv.Itoa(int(ID))), 0755)
 }
 
+// GetImage returns an image from DB. It may return a deleted image.
 func GetImage(db *sql.DB, ID luid.ID) (*DBImage, error) {
 	st, err := db.Prepare(`select id, folder_id, type, width, height, max_width, max_height,
 		size, uploaded_size, average_color, copies, created_at, is_deleted,

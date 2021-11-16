@@ -17,14 +17,16 @@ import (
 	"github.com/previnder/citra/pkg/luid"
 )
 
-type server struct {
+// Server is an HTTP server that process and serves images.
+type Server struct {
 	db     *sql.DB
 	router *mux.Router
-	config *config
+	config *Config
 }
 
-func newServer(db *sql.DB, c *config) *server {
-	s := &server{}
+// NewServer returns an image server.
+func NewServer(db *sql.DB, c *Config) *Server {
+	s := &Server{}
 	s.db = db
 	s.config = c
 
@@ -40,7 +42,7 @@ func newServer(db *sql.DB, c *config) *server {
 	return s
 }
 
-func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		w.Header().Add("Content-Type", "application/json; charset=UTF-8")
 		s.router.ServeHTTP(w, r)
@@ -49,7 +51,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) writeError(w http.ResponseWriter, statusCode int, message string) {
+func (s *Server) writeError(w http.ResponseWriter, statusCode int, message string) {
 	res := struct {
 		Status  int    `json:"status"`
 		Message string `json:"message"`
@@ -63,23 +65,23 @@ func (s *server) writeError(w http.ResponseWriter, statusCode int, message strin
 	w.Write(data)
 }
 
-func (s *server) writeInternalServerError(w http.ResponseWriter, err error) {
-	s.writeError(w, http.StatusInternalServerError, "Internal server error")
+func (s *Server) writeInternalServerError(w http.ResponseWriter, err error) {
+	s.writeError(w, http.StatusInternalServerError, "Internal Server error")
 	log.Println(err)
 }
 
-func (s *server) notFoundHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) notFoundHandler(w http.ResponseWriter, r *http.Request) {
 	s.writeError(w, http.StatusNotFound, "Not found")
 }
 
-func (s *server) methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) methodNotAllowedHandler(w http.ResponseWriter, r *http.Request) {
 	s.writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 }
 
 // abort if error is non-nil.
 //
 // If an error is encounted notFoundHandler is invoked.
-func (s *server) unmarshalLUID(w http.ResponseWriter, r *http.Request, ID string) (luid.ID, error) {
+func (s *Server) unmarshalLUID(w http.ResponseWriter, r *http.Request, ID string) (luid.ID, error) {
 	var LUID luid.ID
 	if err := LUID.UnmarshalText([]byte(ID)); err != nil {
 		s.notFoundHandler(w, r)
@@ -91,7 +93,7 @@ func (s *server) unmarshalLUID(w http.ResponseWriter, r *http.Request, ID string
 
 // addImage accepts only POST requests and must have a content type of
 // multipart/form-data.
-func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) addImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // limit max upload size
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		s.writeError(w, http.StatusInternalServerError, "Error parsing multipart/form-data: "+err.Error())
@@ -117,7 +119,7 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var args []saveImageArg
+	var args []SaveImageArg
 	if err = json.Unmarshal([]byte(copies), &args); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid json")
 		return
@@ -151,7 +153,7 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func (s *server) getImage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getImage(w http.ResponseWriter, r *http.Request) {
 	imageID, err := s.unmarshalLUID(w, r, mux.Vars(r)["imageID"])
 	if err != nil {
 		return
@@ -175,7 +177,7 @@ func (s *server) getImage(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func (s *server) deleteImage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deleteImage(w http.ResponseWriter, r *http.Request) {
 	imageID, err := s.unmarshalLUID(w, r, mux.Vars(r)["imageID"])
 	if err != nil {
 		return
@@ -200,7 +202,7 @@ func (s *server) deleteImage(w http.ResponseWriter, r *http.Request) {
 }
 
 // URL is of the form /images/{folderID/{imageID}.jpg[?size=1440x720&fit=cover]
-func (s *server) serveImages(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveImages(w http.ResponseWriter, r *http.Request) {
 	path := strings.Split(r.URL.Path, "/")
 	if path[0] == "" {
 		path = path[1:]
@@ -271,8 +273,8 @@ func (s *server) serveImages(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", stat.ModTime(), file)
 }
 
-func (s *server) imageInternalServerError(w http.ResponseWriter, r *http.Request) {
+func (s *Server) imageInternalServerError(w http.ResponseWriter, r *http.Request) {
 	debug.PrintStack()
 	w.WriteHeader(http.StatusInternalServerError)
-	w.Write([]byte("Internal server error"))
+	w.Write([]byte("Internal Server error"))
 }
