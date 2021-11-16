@@ -72,11 +72,21 @@ type DBImage struct {
 	DeletedAt *time.Time `json:"-"`
 
 	// Is of the format /imgs/{FolderID}/{ID}.jpg.
-	URL string `json:"defaultImageURL,omitempty"`
+	URL string `json:"url,omitempty"`
+
+	URLs []string `json:"urls"`
 }
 
-func (i *DBImage) DefaultImageURL() string {
-	return "/images/" + strconv.Itoa(i.FolderID) + "/" + i.ID.String() + ".jpg"
+func (i *DBImage) GenerateURLs() {
+	folderID := strconv.Itoa(i.FolderID)
+	ID := i.ID.String()
+	i.URL = "/images/" + folderID + "/" + ID + ".jpg"
+
+	i.URLs = append(i.URLs, i.URL)
+	for _, item := range i.Copies {
+		q := "size=" + strconv.Itoa(item.MaxWidth) + "x" + strconv.Itoa(item.MaxHeight) + "&sort=" + string(item.ImageFit)
+		i.URLs = append(i.URLs, i.URL+"?"+q)
+	}
 }
 
 type saveImageArg struct {
@@ -187,7 +197,11 @@ func SaveImage(db *sql.DB, buf []byte, copies []saveImageArg, rootDir string) (*
 		return nil, err
 	}
 
-	return nil, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return GetImage(db, ID)
 }
 
 // folder is rootDir/folderID and it already exists.
@@ -278,7 +292,7 @@ func GetImage(db *sql.DB, ID luid.ID) (*DBImage, error) {
 		return nil, errors.New("error unmarshaling copies: " + err.Error())
 	}
 
-	image.URL = image.DefaultImageURL()
+	image.GenerateURLs()
 
 	return image, nil
 }

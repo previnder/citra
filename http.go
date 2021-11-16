@@ -23,9 +23,10 @@ type server struct {
 	config *config
 }
 
-func newServer(db *sql.DB) *server {
+func newServer(db *sql.DB, c *config) *server {
 	s := &server{}
 	s.db = db
+	s.config = c
 
 	s.router = mux.NewRouter()
 
@@ -122,11 +123,19 @@ func (s *server) addImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t1 := time.Now()
-	_, err = SaveImage(s.db, buf, args, s.config.RootUploadsDir)
-	log.Println(time.Since(t1))
+	image, err := SaveImage(s.db, buf, args, s.config.RootUploadsDir)
 	if err != nil {
-		log.Println(err)
+		s.writeInternalServerError(w, err)
+		return
 	}
+	log.Printf("Took %v to process %v\n", time.Since(t1), image.ID)
+
+	data, err := json.Marshal(image)
+	if err != nil {
+		s.writeInternalServerError(w, err)
+		return
+	}
+	w.Write(data)
 }
 
 func (s *server) getImage(w http.ResponseWriter, r *http.Request) {

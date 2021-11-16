@@ -85,7 +85,7 @@ func main() {
 	}
 
 	if *runServer {
-		server := newServer(db)
+		server := newServer(db, config)
 		log.Fatal(http.ListenAndServe("localhost:"+strconv.Itoa(config.Port), server))
 	}
 }
