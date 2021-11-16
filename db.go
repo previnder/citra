@@ -87,7 +87,7 @@ func (i *DBImage) GenerateURLs() {
 
 	i.URLs = append(i.URLs, i.URL)
 	for _, item := range i.Copies {
-		q := "size=" + strconv.Itoa(item.MaxWidth) + "x" + strconv.Itoa(item.MaxHeight) + "&sort=" + string(item.ImageFit)
+		q := "size=" + strconv.Itoa(item.MaxWidth) + "x" + strconv.Itoa(item.MaxHeight) + "&fit=" + string(item.ImageFit)
 		i.URLs = append(i.URLs, i.URL+"?"+q)
 	}
 }
