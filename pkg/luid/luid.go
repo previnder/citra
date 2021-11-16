@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
 // ID is an array of 12 bytes that is composed of 8 bytes of time and 4 random
 // bytes in big endian byte order.
 type ID [12]byte
