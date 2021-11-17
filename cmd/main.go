@@ -9,10 +9,9 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/golang-migrate/migrate"
-	"github.com/golang-migrate/migrate/database/mysql"
 	_ "github.com/golang-migrate/migrate/source/file"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/previnder/citra"
 )
 
 func main() {
@@ -33,7 +32,7 @@ func main() {
 	if *configFile != "" {
 		path = *configFile
 	}
-	config, err := UnmarshalConfigFile(path)
+	config, err := citra.UnmarshalConfigFile(path)
 	if err != nil {
 		log.Fatal("Error reading config file: ", err)
 	}
@@ -59,14 +58,14 @@ func main() {
 
 	if *runMigrations {
 		log.Println("Running migrations...")
-		if err := RunMigrations(db); err != nil {
+		if err := citra.RunMigrations(db); err != nil {
 			log.Fatal("Error running migrations: ", err)
 		}
 		log.Println("Migrations completed")
 	}
 
 	if *runServer {
-		server := NewServer(db, config)
+		server := citra.NewServer(db, config)
 		log.Println("Starting HTTP server on", config.Addr)
 		log.Fatal(http.ListenAndServe(config.Addr, server))
 	}
@@ -79,24 +78,4 @@ func openDB(user, password, database string) *sql.DB {
 		log.Fatal("Error connecting to mysql: ", err)
 	}
 	return db
-}
-
-// RunMigrations runs all the migrations in migrations folder.
-func RunMigrations(db *sql.DB) error {
-	driver, err := mysql.WithInstance(db, &mysql.Config{})
-	if err != nil {
-		return err
-	}
-
-	m, err := migrate.NewWithDatabaseInstance("file://migrations", "mysql", driver)
-	if err != nil {
-		return err
-	}
-
-	err = m.Up()
-	if err == migrate.ErrNoChange {
-		log.Println("Migrations no change")
-		return nil
-	}
-	return err
 }

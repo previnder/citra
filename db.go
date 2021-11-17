@@ -1,4 +1,4 @@
-package main
+package citra
 
 import (
 	"bytes"
@@ -7,12 +7,15 @@ import (
 	"errors"
 	"image/jpeg"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/golang-migrate/migrate"
+	"github.com/golang-migrate/migrate/database/mysql"
 	"github.com/previnder/citra/pkg/luid"
 )
 
@@ -21,6 +24,26 @@ const (
 	// Copies are not counted.
 	MaxImagesPerFolder = 5000
 )
+
+// RunMigrations runs all the migrations in migrations folder.
+func RunMigrations(db *sql.DB) error {
+	driver, err := mysql.WithInstance(db, &mysql.Config{})
+	if err != nil {
+		return err
+	}
+
+	m, err := migrate.NewWithDatabaseInstance("file://migrations", "mysql", driver)
+	if err != nil {
+		return err
+	}
+
+	err = m.Up()
+	if err == migrate.ErrNoChange {
+		log.Println("Migrations no change")
+		return nil
+	}
+	return err
+}
 
 // ImageCopy is a copy of an image.
 type ImageCopy struct {
