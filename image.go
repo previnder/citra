@@ -189,6 +189,9 @@ func ToJPEG(image []byte, maxWidth, maxHeight int, fit ImageFit) ([]byte, ImageS
 }
 
 func bimgError(err error) error {
+	if err == nil {
+		return nil
+	}
 	if strings.Contains(strings.ToLower(err.Error()), "unsupported image format") {
 		return ErrUnsupportedImage
 	}
