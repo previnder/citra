@@ -17,14 +17,14 @@ import (
 	"github.com/previnder/citra/pkg/luid"
 )
 
-// Server is an HTTP server that process and serves images.
+// Server is an HTTP server that processes and serves images.
 type Server struct {
 	db     *sql.DB
 	router *mux.Router
 	config *Config
 }
 
-// NewServer returns an image server.
+// NewServer returns a new image server.
 func NewServer(db *sql.DB, c *Config) *Server {
 	s := &Server{}
 	s.db = db
@@ -60,14 +60,15 @@ func (s *Server) writeError(w http.ResponseWriter, statusCode int, message strin
 		Message: message,
 	}
 
-	data, _ := json.Marshal(res)
 	w.WriteHeader(statusCode)
+	data, _ := json.Marshal(res)
 	w.Write(data)
 }
 
 func (s *Server) writeInternalServerError(w http.ResponseWriter, err error) {
 	s.writeError(w, http.StatusInternalServerError, "Internal Server error")
-	log.Println(err)
+	log.Println("500 error:", err)
+	debug.PrintStack()
 }
 
 func (s *Server) notFoundHandler(w http.ResponseWriter, r *http.Request) {
@@ -125,31 +126,25 @@ func (s *Server) addImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defaultFound := false
-	for _, arg := range args {
-		if arg.IsDefault {
-			defaultFound = true
-			break
-		}
-	}
-	if !defaultFound {
-		s.writeError(w, http.StatusBadRequest, "no default copy provided")
-		return
-	}
-
 	t1 := time.Now()
+
 	image, err := SaveImage(s.db, buf, args, s.config.RootUploadsDir)
 	if err != nil {
+		if err == ErrNoDefaultImage {
+			s.writeError(w, http.StatusBadRequest, "No default copy to make")
+			return
+		}
+		if err == ErrUnsupportedImage {
+			s.writeError(w, http.StatusBadRequest, "Unsupported image format")
+			return
+		}
 		s.writeInternalServerError(w, err)
 		return
 	}
+
 	log.Printf("Took %v to process %v\n", time.Since(t1), image.ID)
 
-	data, err := json.Marshal(image)
-	if err != nil {
-		s.writeInternalServerError(w, err)
-		return
-	}
+	data, _ := json.Marshal(image)
 	w.Write(data)
 }
 
@@ -169,11 +164,7 @@ func (s *Server) getImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := json.Marshal(image)
-	if err != nil {
-		s.writeInternalServerError(w, err)
-		return
-	}
+	data, _ := json.Marshal(image)
 	w.Write(data)
 }
 
@@ -193,11 +184,7 @@ func (s *Server) deleteImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := json.Marshal(image)
-	if err != nil {
-		s.writeInternalServerError(w, err)
-		return
-	}
+	data, _ := json.Marshal(image)
 	w.Write(data)
 }
 
@@ -257,14 +244,14 @@ func (s *Server) serveImages(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		s.imageInternalServerError(w, r)
+		s.imageInternalServerError(w, r, err)
 		return
 	}
 	defer file.Close()
 
 	stat, err := file.Stat()
 	if err != nil {
-		s.imageInternalServerError(w, r)
+		s.imageInternalServerError(w, r, err)
 		return
 	}
 
@@ -273,7 +260,8 @@ func (s *Server) serveImages(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", stat.ModTime(), file)
 }
 
-func (s *Server) imageInternalServerError(w http.ResponseWriter, r *http.Request) {
+func (s *Server) imageInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+	log.Println("500 error:", err)
 	debug.PrintStack()
 	w.WriteHeader(http.StatusInternalServerError)
 	w.Write([]byte("Internal Server error"))

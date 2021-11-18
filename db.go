@@ -20,9 +20,14 @@ import (
 )
 
 const (
-	// MaxImagesPerFolder is the maximum number of image files in one folder.
-	// Copies are not counted.
+	// MaxImagesPerFolder sets the maximum number of image files (without
+	// counting copies) that can be saved in one folder.
 	MaxImagesPerFolder = 5000
+)
+
+// Errors.
+var (
+	ErrNoDefaultImage = errors.New("no default image was provided")
 )
 
 // RunMigrations runs all the migrations in migrations folder.
@@ -56,18 +61,18 @@ type ImageCopy struct {
 	Size int `json:"s"`
 }
 
-// Filename returns filename os the image stored on disk.
+// Filename returns the basename of the image stored on disk.
 func (c ImageCopy) Filename(imageID string) string {
 	return imageID + "_" + strconv.Itoa(c.MaxWidth) + "_" + strconv.Itoa(c.MaxHeight) + "_" + strings.ToLower(string(c.ImageFit)) + ".jpg"
 }
 
-// DBImage is a record in images table.
+// DBImage is a record in the images table.
 type DBImage struct {
 	ID luid.ID `json:"id"`
 
-	FolderID int `json:"-"`
+	FolderID int `json:"folderId"`
 
-	// JPEG for now.
+	// Always JPEG for now.
 	Type ImageType `json:"type"`
 
 	// Actual width of image.
@@ -82,23 +87,26 @@ type DBImage struct {
 
 	MaxHeight int `json:"maxHeight"`
 
-	Size         int `json:"size"`
+	// Size of image in bytes.
+	Size int `json:"size"`
+
+	// Size of original uploaded image in bytes.
 	UploadedSize int `json:"-"`
 
 	AverageColor RGB `json:"averageColor"`
 
-	// Copies are stored on disk (in appropriate folder) with
-	// filename {ID}_{MaxWidth}_{MaxHeight}_{ImageFit}.jpg
-	// Copies may be nil.
+	// Copies are stored on disk (in appropriate folders) with filename
+	// {ID}_{MaxWidth}_{MaxHeight}_{ImageFit}.jpg Copies may be nil.
 	Copies []*ImageCopy `json:"copies"`
 
 	CreatedAt time.Time  `json:"createdAt"`
 	IsDeleted bool       `json:"deleted"`
 	DeletedAt *time.Time `json:"deletedAt,omitempty"`
 
-	// Is of the format /imgs/{FolderID}/{ID}.jpg.
+	// URL pathname of the image. Is of the format /images/{FolderID}/{ID}.jpg.
 	URL string `json:"url,omitempty"`
 
+	// URL pathnames of the image and all its copies.
 	URLs []string `json:"urls"`
 }
 
@@ -129,10 +137,11 @@ type SaveImageArg struct {
 	IsDefault bool `json:"default"`
 }
 
-// SaveImage saves the image in buf to disk and creates a record in images table.
-// It also creates thumbnails of thumb sizes.
+// SaveImage saves the image in buf to disk (in a folder inside rootDir) and
+// creates a record in images table. It also creates and stores copies of the
+// image.
 //
-// The images are saved as JPEGs.
+// All images are saved as JPEGs (for now).
 func SaveImage(db *sql.DB, buf []byte, copies []SaveImageArg, rootDir string) (*DBImage, error) {
 	var defaultCopy SaveImageArg
 	for _, item := range copies {
@@ -141,20 +150,17 @@ func SaveImage(db *sql.DB, buf []byte, copies []SaveImageArg, rootDir string) (*
 		}
 	}
 
-	originalWidth, originalHeight, err := GetImageSize(buf)
-	if err != nil {
-		return nil, err
-	}
-
 	if !defaultCopy.IsDefault {
-		return nil, errors.New("no default image as an argument")
+		return nil, ErrNoDefaultImage
 	}
 
 	jpg, size, err := ToJPEG(buf, defaultCopy.MaxWidth, defaultCopy.MaxHeight, defaultCopy.ImageFit)
 	if err != nil {
-		if strings.Contains(err.Error(), "Unsupported image format") {
-			return nil, ErrUnsupportedImage
-		}
+		return nil, err
+	}
+
+	originalWidth, originalHeight, err := GetImageSize(buf)
+	if err != nil {
 		return nil, err
 	}
 
@@ -182,6 +188,8 @@ func SaveImage(db *sql.DB, buf []byte, copies []SaveImageArg, rootDir string) (*
 		tx.Rollback()
 		return nil, err
 	}
+	// Save copies to disk. ImageFit contain copies are skipped if a copy is
+	// already saved with the same width and height.
 	for _, item := range copies {
 		if item.IsDefault {
 			continue
@@ -216,7 +224,7 @@ func SaveImage(db *sql.DB, buf []byte, copies []SaveImageArg, rootDir string) (*
 		tx.Rollback()
 		return nil, err
 	}
-	color, _ := json.Marshal(ImageAverageColor(jpegImage))
+	color, _ := json.Marshal(AverageColor(jpegImage))
 
 	savedCopiesJSON, _ := json.Marshal(savedCopies)
 
@@ -332,7 +340,7 @@ func GetImage(db *sql.DB, ID luid.ID) (*DBImage, error) {
 }
 
 // DeleteImage sets is_deleted field of images to true and deletes image files
-// on disk.
+// from disk.
 func DeleteImage(db *sql.DB, ID luid.ID, rootDir string) (*DBImage, error) {
 	image, err := GetImage(db, ID)
 	if err != nil {
@@ -376,8 +384,9 @@ func DeleteImage(db *sql.DB, ID luid.ID, rootDir string) (*DBImage, error) {
 	return image, nil
 }
 
-// deleteFilesByPrefix deletes all files in dir with filename prefix s. If and
-// error is encounted no of files deleted up to that point is returned.
+// deleteFilesByPrefix deletes all files in dir with filename prefix s and
+// returns the number of files deleted. If an error is encounted no of files
+// deleted up to that point is returned.
 func deleteFilesByPrefix(dir, s string) (int, error) {
 	file, err := os.Open(dir)
 	if err != nil {

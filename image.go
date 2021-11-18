@@ -10,11 +10,6 @@ import (
 	"github.com/h2non/bimg"
 )
 
-// Errors.
-var (
-	ErrUnsupportedImage = errors.New("unsupported image format")
-)
-
 // ImageType represents the type of image.
 type ImageType string
 
@@ -22,6 +17,12 @@ type ImageType string
 const (
 	ImageTypeJPEG = ImageType("jpeg")
 	ImageTypeWEBP = ImageType("webp")
+)
+
+// Errors.
+var (
+	ErrInvalidImageFit  = errors.New("invalid image fit")
+	ErrUnsupportedImage = errors.New("unsupported image format")
 )
 
 // RGB represents color values of range (0, 255).
@@ -36,7 +37,7 @@ type ImageSize struct {
 	Width, Height int
 }
 
-// String returns, as an example, "400" if width and height are both 400px, and
+// String returns, for example, "400" if width and height are both 400px, and
 // "400x600" if width is 400px and height is 600px.
 func (s ImageSize) String() string {
 	if s.Width == s.Height {
@@ -45,13 +46,14 @@ func (s ImageSize) String() string {
 	return strconv.Itoa(s.Width) + "x" + strconv.Itoa(s.Height)
 }
 
-// MarshalText implements TextMarshaler interface. Output same as String method.
+// MarshalText implements encoding.TextMarshaler interface. Output same as
+// String method.
 func (s ImageSize) MarshalText() ([]byte, error) {
 	return []byte(s.String()), nil
 }
 
-// UnmarshalText implements TextUnmarshaler interface. It does the reverse of
-// what MarshalText and String do.
+// UnmarshalText implements encoding.TextUnmarshaler interface. It does the
+// reverse of what MarshalText and String do.
 func (s *ImageSize) UnmarshalText(text []byte) error {
 	str := string(text)
 	i := strings.Index(str, "x")
@@ -87,12 +89,18 @@ type ImageFit string
 
 // Valid ImageFit values.
 const (
-	ImageFitCover   = ImageFit("cover")
+	// ImageFitCover covers the given container with the image. The resulting
+	// image may be shrunken, enlarged, and/or cropped.
+	ImageFitCover = ImageFit("cover")
+
+	// ImageFitContain fits the image in the container without either enlarging
+	// the image or cropping it.
 	ImageFitContain = ImageFit("contain")
+
 	ImageFitDefault = ImageFitContain
 )
 
-// UnmarshalText implements TextUnmarshaler interface.
+// UnmarshalText implements encoding.TextUnmarshaler interface.
 func (i *ImageFit) UnmarshalText(text []byte) error {
 	str := string(text)
 	switch str {
@@ -103,7 +111,7 @@ func (i *ImageFit) UnmarshalText(text []byte) error {
 		*i = ImageFitDefault
 		return nil
 	}
-	return errors.New("invalid ImageFit")
+	return ErrInvalidImageFit
 }
 
 // ContainInResolution returns width and height as they fit into an image of
@@ -123,9 +131,9 @@ func ContainInResolution(width, height, w, h int) (int, int) {
 	return int(x), int(y)
 }
 
-// ImageAverageColor returns the average RGB color of img by averaging the
-// colors of at most 10000 pixels. Each RGB value is in the range of (0,255).
-func ImageAverageColor(img image.Image) RGB {
+// AverageColor returns the average RGB color of img by averaging the colors of
+// at most 10000 pixels. Each RGB value is in the range of (0,255).
+func AverageColor(img image.Image) RGB {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 
@@ -157,13 +165,13 @@ func ToJPEG(image []byte, maxWidth, maxHeight int, fit ImageFit) ([]byte, ImageS
 	img := bimg.NewImage(image)
 	if img.Type() != bimg.ImageTypeName(bimg.JPEG) {
 		if _, err := img.Convert(bimg.JPEG); err != nil {
-			return nil, s, err
+			return nil, s, bimgError(err)
 		}
 	}
 
 	size, err := img.Size()
 	if err != nil {
-		return nil, s, err
+		return nil, s, bimgError(err)
 	}
 
 	var w, h int
@@ -172,12 +180,19 @@ func ToJPEG(image []byte, maxWidth, maxHeight int, fit ImageFit) ([]byte, ImageS
 	} else if fit == ImageFitContain {
 		w, h = ContainInResolution(size.Width, size.Height, maxWidth, maxHeight)
 	} else {
-		return nil, s, errors.New("invalid ImageFit")
+		return nil, s, ErrInvalidImageFit
 	}
 
 	s.Width, s.Height = w, h
 	image, err = img.ResizeAndCrop(w, h)
-	return image, s, err
+	return image, s, bimgError(err)
+}
+
+func bimgError(err error) error {
+	if strings.Contains(strings.ToLower(err.Error()), "unsupported image format") {
+		return ErrUnsupportedImage
+	}
+	return err
 }
 
 // GetImageSize returns the size of image.
@@ -185,6 +200,7 @@ func GetImageSize(image []byte) (w int, h int, err error) {
 	img := bimg.NewImage(image)
 	size, err := img.Size()
 	if err != nil {
+		err = bimgError(err)
 		return
 	}
 	w, h = size.Width, size.Height
