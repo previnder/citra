@@ -107,7 +107,7 @@ type DBImage struct {
 	URL string `json:"url,omitempty"`
 
 	// URL pathnames of the image and all its copies.
-	URLs []string `json:"urls"`
+	URLs []string `json:"urls,omitempty"`
 }
 
 // GenerateURLs populates i.URL and i.URLs fields.
