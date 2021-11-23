@@ -392,13 +392,12 @@ func deleteFilesByPrefix(dir, s string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer file.Close()
 
 	names, err := file.Readdirnames(0)
 	if err != nil {
 		return 0, err
 	}
-
-	file.Close()
 
 	n := 0
 	for _, name := range names {
