@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -52,6 +53,23 @@ func main() {
 	}
 	if *uploadsDir != "" {
 		config.RootUploadsDir = *uploadsDir
+	}
+
+	if config.DeletedDir != "" {
+		info, err := os.Stat(config.DeletedDir)
+		if err == nil {
+			if !info.IsDir() {
+				log.Fatal("Deleted images directory is not a directory")
+			}
+		} else {
+			if os.IsNotExist(err) {
+				if err = os.MkdirAll(config.DeletedDir, 0755); err != nil {
+					log.Fatal("Error creating deleted images folder: ", err)
+				}
+			} else {
+				log.Fatal("Error reading deleted dir: ", err)
+			}
+		}
 	}
 
 	db := openDB(config.Database.User, config.Database.Password, config.Database.Database)

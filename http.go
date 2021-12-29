@@ -174,7 +174,7 @@ func (s *Server) deleteImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	image, err := DeleteImage(s.db, imageID, s.config.RootUploadsDir)
+	image, err := DeleteImage(s.db, imageID, s.config.RootUploadsDir, s.config.DeletedDir)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			s.notFoundHandler(w, r)

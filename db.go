@@ -339,9 +339,9 @@ func GetImage(db *sql.DB, ID luid.ID) (*DBImage, error) {
 	return image, nil
 }
 
-// DeleteImage sets is_deleted field of images to true and deletes image files
-// from disk.
-func DeleteImage(db *sql.DB, ID luid.ID, rootDir string) (*DBImage, error) {
+// DeleteImage sets is_deleted field of images to true. If deletedDir is
+// non-empty, images are moved to that directory. Otherwise they are deleted.
+func DeleteImage(db *sql.DB, ID luid.ID, rootDir, deletedDir string) (*DBImage, error) {
 	image, err := GetImage(db, ID)
 	if err != nil {
 		return nil, err
@@ -368,13 +368,28 @@ func DeleteImage(db *sql.DB, ID luid.ID, rootDir string) (*DBImage, error) {
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, err
+	// copy original to deleted images folder
+	prefix := image.ID.String()
+	if deletedDir != "" {
+		originalPath := filepath.Join(rootDir, strconv.Itoa(image.FolderID), prefix+".jpg")
+		data, err := ioutil.ReadFile(originalPath)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if err = ioutil.WriteFile(filepath.Join(deletedDir, prefix+".jpg"), data, 0755); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
 
 	// delete files on disk
-	prefix := image.ID.String()
 	if _, err = deleteFilesByPrefix(filepath.Join(rootDir, strconv.Itoa(image.FolderID)), prefix); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 
