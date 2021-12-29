@@ -137,24 +137,26 @@ func AverageColor(img image.Image) RGB {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 
-	xsteps, ysteps := int(math.Ceil(float64(width)/100.0)), int(math.Ceil(float64(height)/100.0))
-	var r, g, b uint32
+	xsteps, ysteps := int(math.Floor(float64(width)/100.0)), int(math.Floor(float64(height)/100.0))
+	var r, g, b float64
 
 	for i := 0; i < width; i += xsteps {
 		for j := 0; j < height; j += ysteps {
 			c := img.At(i, j)
 			r2, g2, b2, _ := c.RGBA()
-			r = (r + r2) / 2
-			g = (g + g2) / 2
-			b = (b + b2) / 2
+			r = (r + float64(r2)) / 2
+			g = (g + float64(g2)) / 2
+			b = (b + float64(b2)) / 2
 		}
 	}
 
 	var c RGB
-	x := float64(r + g + b)
-	c.R = int(float64(r) / x * 255)
-	c.G = int(float64(g) / x * 255)
-	c.B = int(float64(b) / x * 255)
+	x := r + g + b
+	if x > 0 {
+		c.R = int(r / x * 255.0)
+		c.G = int(g / x * 255.0)
+		c.B = int(b / x * 255.0)
+	}
 	return c
 }
 
