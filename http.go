@@ -33,6 +33,7 @@ func NewServer(db *sql.DB, c *Config) *Server {
 	s.router = mux.NewRouter()
 
 	s.router.Handle("/api/images", http.HandlerFunc(s.addImage)).Methods("POST")
+	s.router.Handle("/api/images/_bulk", http.HandlerFunc(s.bulkDelete)).Methods("DELETE")
 	s.router.Handle("/api/images/{imageID}", http.HandlerFunc(s.getImage)).Methods("GET")
 	s.router.Handle("/api/images/{imageID}", http.HandlerFunc(s.deleteImage)).Methods("DELETE")
 
@@ -265,4 +266,29 @@ func (s *Server) imageInternalServerError(w http.ResponseWriter, r *http.Request
 	debug.PrintStack()
 	w.WriteHeader(http.StatusInternalServerError)
 	w.Write([]byte("Internal Server error"))
+}
+
+func (s *Server) bulkDelete(w http.ResponseWriter, r *http.Request) {
+	log.Println("Here mate!")
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "Error reading request body")
+		return
+	}
+
+	var IDs []luid.ID
+	if err = json.Unmarshal(data, &IDs); err != nil {
+		s.writeError(w, http.StatusBadRequest, "Error reading JSON body")
+		return
+	}
+
+	for _, id := range IDs {
+		if _, err = DeleteImage(s.db, id, s.config.RootUploadsDir, s.config.DeletedDir); err != nil {
+			s.imageInternalServerError(w, r, err)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
