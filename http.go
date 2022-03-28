@@ -96,9 +96,13 @@ func (s *Server) unmarshalLUID(w http.ResponseWriter, r *http.Request, ID string
 // addImage accepts only POST requests and must have a content type of
 // multipart/form-data.
 func (s *Server) addImage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // limit max upload size
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		s.writeError(w, http.StatusInternalServerError, "Error parsing multipart/form-data: "+err.Error())
+	r.Body = http.MaxBytesReader(w, r.Body, int64(s.config.MaxUploadSize)) // limit max upload size
+	if err := r.ParseMultipartForm(int64(s.config.MaxUploadSize)); err != nil {
+		if strings.Contains(err.Error(), "request body too large") {
+			s.writeError(w, http.StatusRequestEntityTooLarge, "Upload exceeds the maximum size of "+strconv.Itoa(s.config.MaxUploadSize)+" bytes")
+		} else {
+			s.writeError(w, http.StatusInternalServerError, "Error parsing multipart/form-data: "+err.Error())
+		}
 		return
 	}
 
@@ -269,8 +273,6 @@ func (s *Server) imageInternalServerError(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) bulkDelete(w http.ResponseWriter, r *http.Request) {
-	log.Println("Here mate!")
-
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "Error reading request body")

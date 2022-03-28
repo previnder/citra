@@ -24,6 +24,9 @@ type Config struct {
 	// Deleted images are moved here. If DeletedDir is empty, the images are
 	// deleted.
 	DeletedDir string `json:"deletedDir"`
+
+	// Requests with images larger than this would be discarded.
+	MaxUploadSize int `json:"maxUploadSize"`
 }
 
 // UnmarshalConfigFile reads the config in file and returns it. In case no such
@@ -33,6 +36,7 @@ func UnmarshalConfigFile(file string) (*Config, error) {
 	config.Addr = "localhost:3881"
 	config.RootUploadsDir = "./uploads"
 	config.DeletedDir = "./deleted"
+	config.MaxUploadSize = 10 << 20
 
 	f, err := os.Open(file)
 	if err != nil {
