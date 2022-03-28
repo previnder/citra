@@ -22,7 +22,7 @@ import (
 const (
 	// MaxImagesPerFolder sets the maximum number of image files (without
 	// counting copies) that can be saved in one folder.
-	MaxImagesPerFolder = 5000
+	MaxImagesPerFolder = 1000
 )
 
 // Errors.
@@ -238,6 +238,11 @@ func SaveImage(db *sql.DB, buf []byte, copies []SaveImageArg, rootDir string) (*
 		return nil, err
 	}
 
+	if _, err = tx.Exec("update folders set images_count = images_count + 1, total_size = total_size + ? where id = ?", len(jpg), folderID); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -272,7 +277,8 @@ func saveImageCopy(buf []byte, arg SaveImageArg, folder, imageID string) (*Image
 }
 
 // createImagesFolder creates a folder on disk and a record on folders table if
-// no folders are available or returns the last folder id.
+// no folders are available (or if the folder is full) or returns the last
+// folder id.
 func createImagesFolder(tx *sql.Tx, rootDir string) (int, error) {
 	var folderID, imagesCount int
 	createFolder := false
