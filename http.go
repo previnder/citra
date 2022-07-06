@@ -260,7 +260,7 @@ func (s *Server) serveImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("Cache-Control", "max-age=1209600, no-transform")
+	w.Header().Add("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Add("Cross-Origin-Resource-Policy", "cross-origin")
 	http.ServeContent(w, r, "", stat.ModTime(), file)
 }
