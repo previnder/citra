@@ -22,7 +22,7 @@ import (
 const (
 	// MaxImagesPerFolder sets the maximum number of image files (without
 	// counting copies) that can be saved in one folder.
-	MaxImagesPerFolder = 1000
+	MaxImagesPerFolder = 4000
 )
 
 // Errors.
