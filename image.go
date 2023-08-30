@@ -23,6 +23,7 @@ const (
 var (
 	ErrInvalidImageFit  = errors.New("invalid image fit")
 	ErrUnsupportedImage = errors.New("unsupported image format")
+	ErrNoImage          = errors.New("image buffer empty")
 )
 
 // RGB represents color values of range (0, 255).
@@ -138,8 +139,14 @@ func AverageColor(img image.Image) RGB {
 	height := img.Bounds().Dy()
 
 	xsteps, ysteps := int(math.Floor(float64(width)/100.0)), int(math.Floor(float64(height)/100.0))
-	var r, g, b float64
+	if xsteps <= 0 {
+		xsteps = 1
+	}
+	if ysteps <= 0 {
+		ysteps = 1
+	}
 
+	var r, g, b float64
 	for i := 0; i < width; i += xsteps {
 		for j := 0; j < height; j += ysteps {
 			c := img.At(i, j)

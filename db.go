@@ -143,6 +143,10 @@ type SaveImageArg struct {
 //
 // All images are saved as JPEGs (for now).
 func SaveImage(db *sql.DB, buf []byte, copies []SaveImageArg, rootDir string) (*DBImage, error) {
+	if len(buf) == 0 {
+		return nil, ErrNoImage
+	}
+
 	var defaultCopy SaveImageArg
 	for _, item := range copies {
 		if item.IsDefault {

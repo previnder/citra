@@ -69,7 +69,7 @@ func (s *Server) writeError(w http.ResponseWriter, statusCode int, message strin
 func (s *Server) writeInternalServerError(w http.ResponseWriter, err error) {
 	s.writeError(w, http.StatusInternalServerError, "Internal Server error")
 	log.Println("500 error:", err)
-	debug.PrintStack()
+	// debug.PrintStack()
 }
 
 func (s *Server) notFoundHandler(w http.ResponseWriter, r *http.Request) {
@@ -141,6 +141,10 @@ func (s *Server) addImage(w http.ResponseWriter, r *http.Request) {
 		}
 		if err == ErrUnsupportedImage {
 			s.writeError(w, http.StatusBadRequest, "Unsupported image format")
+			return
+		}
+		if err == ErrNoImage {
+			s.writeError(w, http.StatusBadRequest, "Image buffer empty")
 			return
 		}
 		s.writeInternalServerError(w, err)
