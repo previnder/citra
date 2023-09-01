@@ -171,7 +171,13 @@ func AverageColor(img image.Image) RGB {
 // into maxWidth and maxHeight according to fit.
 func ToJPEG(image []byte, maxWidth, maxHeight int, fit ImageFit) ([]byte, ImageSize, error) {
 	s := ImageSize{}
-	img := bimg.NewImage(image)
+	bytes, err := bimg.NewImage(image).Process(bimg.Options{
+		StripMetadata: true,
+	})
+	img := bimg.NewImage(bytes)
+	if err != nil {
+		return nil, s, err
+	}
 	if img.Type() != bimg.ImageTypeName(bimg.JPEG) {
 		if _, err := img.Convert(bimg.JPEG); err != nil {
 			return nil, s, bimgError(err)
